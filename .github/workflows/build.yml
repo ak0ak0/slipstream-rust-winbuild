@@ -1,13 +1,17 @@
-name: Build Windows Client (VCPKG Method)
+name: Build Windows Client (Nuclear Fix)
 
 on:
-  workflow_dispatch:
+  push: # اینو اضافه کردم که به محض ذخیره کردن، خودش خودکار بیلد کنه
+  workflow_dispatch: # دکمه دستی هم باشه
 
 jobs:
   build:
     runs-on: windows-latest
-    variables:
-      VCPKG_POLICY_EMPTY_PACKAGE: 1
+    env:
+      OPENSSL_NO_VENDOR: 0
+      PICOQUIC_AUTO_BUILD: 1
+      CMAKE_GENERATOR: Ninja # استفاده از نینجا برای حل ارور Os 193
+      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
 
     steps:
       - name: Checkout code
@@ -15,23 +19,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install System Tools
+      - name: Install Critical Tools
         shell: powershell
         run: |
-          # ۱. حذف لینکر مزاحم گیت (حل ارور link.exe)
+          # ۱. حذف لینکر مزاحم گیت
           if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
               Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
           }
+          # ۲. نصب ابزارهای بیلد (نینجا اضافه شد)
+          choco install nasm llvm strawberryperl ninja -y
           
-          # ۲. نصب پیش‌نیازهای سنگین
-          choco install nasm llvm strawberryperl -y
-          
-          # ۳. اضافه کردن مسیرها به PATH
+          # ۳. ست کردن مسیرها
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
           echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          echo "C:\usr\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC (Visual Studio Environment)
+      - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Protoc
@@ -44,21 +48,15 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build with Fixed Environment
+      - name: Final Build
         shell: cmd
-        env:
-          OPENSSL_NO_VENDOR: 0
-          PICOQUIC_AUTO_BUILD: 1
-          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
         run: |
-          # اجبار به استفاده از ابزارهای ویندوزی
           set CC=cl.exe
           set CXX=cl.exe
-          # اجرای بیلد با استفاده از قابلیت vendored برای پایداری
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows
-          path: target/release/slipstream.exe
+          name: slipstream-windows-binary
+          path: target/release/*.exe
