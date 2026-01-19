@@ -1,17 +1,17 @@
 name: Build Windows Client
 
 on:
-  workflow_dispatch: # فقط وقتی خودت دکمه رو بزنی بیلد می‌کنه
+  workflow_dispatch: # اجرای دستی با دکمه
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4 # آپدیت شد به v4
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3 # آپدیت شد به v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -24,7 +24,7 @@ jobs:
         run: cargo build --release
 
       - name: Upload EXE
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # این همون بخشیه که ارور می‌داد، آپدیت شد به v4
         with:
           name: slipstream-exe
           path: target/release/*.exe
