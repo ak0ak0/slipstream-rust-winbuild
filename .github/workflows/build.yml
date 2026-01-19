@@ -1,4 +1,4 @@
-name: Build Windows Client (Fixed)
+name: Build Windows Client (Final Fix)
 
 on:
   workflow_dispatch:
@@ -9,28 +9,26 @@ jobs:
     env:
       OPENSSL_NO_VENDOR: 0
       PICOQUIC_AUTO_BUILD: 1
-      # آدرس Clang برای اینکه FFI ارور 193 نده
+      # تنظیم مسیر Clang برای حل ارور Os 193 (Bindgen)
       LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
-      
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive' # حتماً باید تمام زیرمجموعه‌ها رو دانلود کنه
-          fetch-depth: 0
+          submodules: 'recursive' # دانلود کامل کدهای C زیرمجموعه
 
-      - name: Install LLVM and Clang
-        run: choco install llvm -y # برای بیلد کردن بخش‌های C الزامیه
-
-      - name: Install NASM and Perl
-        run: choco install nasm strawberryperl -y
+      - name: Install Dependencies (NASM, Perl, LLVM)
+        run: |
+          choco install nasm strawberryperl llvm -y
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up MSVC
+      - name: Set up MSVC (Visual Studio Build Tools)
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Rust
@@ -39,13 +37,11 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        shell: bash # استفاده از بش برای اینکه اسکریپت‌های داخلی پروژه درست اجرا بشن
-        run: |
-          # اجبار به استفاده از پورت‌های ویندوزی برای پکیج‌ها
-          cargo build --release --features openssl/vendored
+        # استفاده از پاورشل پیش‌فرض گیت‌هاب برای جلوگیری از تداخل link.exe
+        run: cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows-exe
+          name: slipstream-windows-binary
           path: target/release/*.exe
