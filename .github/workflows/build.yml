@@ -1,0 +1,51 @@
+name: Build Windows Client (Fixed)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      OPENSSL_NO_VENDOR: 0
+      PICOQUIC_AUTO_BUILD: 1
+      # آدرس Clang برای اینکه FFI ارور 193 نده
+      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # حتماً باید تمام زیرمجموعه‌ها رو دانلود کنه
+          fetch-depth: 0
+
+      - name: Install LLVM and Clang
+        run: choco install llvm -y # برای بیلد کردن بخش‌های C الزامیه
+
+      - name: Install NASM and Perl
+        run: choco install nasm strawberryperl -y
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Binary
+        shell: bash # استفاده از بش برای اینکه اسکریپت‌های داخلی پروژه درست اجرا بشن
+        run: |
+          # اجبار به استفاده از پورت‌های ویندوزی برای پکیج‌ها
+          cargo build --release --features openssl/vendored
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: slipstream-windows-exe
+          path: target/release/*.exe
