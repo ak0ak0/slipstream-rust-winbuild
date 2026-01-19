@@ -1,42 +1,29 @@
-name: Build Windows Client (Nuclear Fix)
+name: Build Windows Client (MSYS2 Method)
 
 on:
-  push: # اینو اضافه کردم که به محض ذخیره کردن، خودش خودکار بیلد کنه
-  workflow_dispatch: # دکمه دستی هم باشه
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      OPENSSL_NO_VENDOR: 0
-      PICOQUIC_AUTO_BUILD: 1
-      CMAKE_GENERATOR: Ninja # استفاده از نینجا برای حل ارور Os 193
-      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Critical Tools
-        shell: powershell
-        run: |
-          # ۱. حذف لینکر مزاحم گیت
-          if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
-              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
-          }
-          # ۲. نصب ابزارهای بیلد (نینجا اضافه شد)
-          choco install nasm llvm strawberryperl ninja -y
-          
-          # ۳. ست کردن مسیرها
-          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
-          echo "C:\usr\bin" >> $env:GITHUB_PATH
-
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-perl
+            mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-go
+            mingw-w64-x86_64-llvm
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -48,15 +35,24 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Final Build
-        shell: cmd
+      - name: Final Build Attempt
+        shell: msys2 {0}
+        env:
+          OPENSSL_NO_VENDOR: 0
+          PICOQUIC_AUTO_BUILD: 1
+          LIBCLANG_PATH: /mingw64/bin
+          # این متغیرها به Rust می‌گویند از کامپایلر درست استفاده کند
+          CC: clang
+          CXX: clang++
+          AR: llvm-ar
         run: |
-          set CC=cl.exe
-          set CXX=cl.exe
+          # اجبار به استفاده از لینکر مایکروسافت برای خروجی ویندوزی
+          export RUSTFLAGS="-C linker=link.exe"
+          # اجرای بیلد
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows-binary
-          path: target/release/*.exe
+          name: slipstream-windows
+          path: target/release/slipstream.exe
