@@ -1,4 +1,4 @@
-name: Build Windows Client
+name: Build Windows Client (Ultimate Fix)
 
 on:
   workflow_dispatch:
@@ -7,12 +7,12 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      PICOQUIC_AUTO_BUILD: 1
       OPENSSL_NO_VENDOR: 0
-      # تنظیم مسیر Clang برای Bindgen
+      PICOQUIC_AUTO_BUILD: 1
       LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
-      # اجبار به استفاده از NASM برای بخش‌های کریپتو
+      # اجبار به استفاده از NASM و Perl درست
       NASM: 'C:\Program Files\NASM\nasm.exe'
+      PERL: 'C:\Strawberry\perl\bin\perl.exe'
 
     steps:
       - name: Checkout code
@@ -20,25 +20,33 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install System Tools
+      - name: Deep Clean and Environment Fix
         shell: powershell
         run: |
-          # ۱. حذف لینکر مزاحم گیت (حل قطعی مشکل link.exe)
+          # ۱. حذف لینکر مزاحم گیت (حل ارور link.exe)
           if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
               Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
           }
-          
-          # ۲. نصب ابزارهای مورد نیاز
+
+          # ۲. کلک رشتی: معرفی پسوند .sh به ویندوز (حل ارور Os 193)
+          # این باعث می‌شه وقتی پروژه می‌خواد یه اسکریپت رو اجرا کنه، ویندوز نفهمه و بده به sh.exe
+          $shPath = "C:\Program Files\Git\bin\sh.exe"
+          cmd /c "assoc .sh=shfile"
+          cmd /c "ftype shfile=`"$shPath`" `"%1`" %*"
+          $env:PATHEXT += ";.SH"
+          [Environment]::SetEnvironmentVariable("PATHEXT", "$((Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PATHEXT);.SH", "Machine")
+
+          # ۳. نصب ابزارهای حیاتی
           choco install nasm llvm strawberryperl -y
-          
-          # ۳. اضافه کردن مسیرها به PATH با اولویت بالا
+
+          # ۴. تنظیم اولویت‌بندی PATH (اولیت مطلق با ابزارهای بیلد)
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
           echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
-          # اضافه کردن مسیر شل گیت برای اجرای اسکریپت‌های احتمالی
           echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC (Visual Studio Environment)
+      - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Protoc
@@ -51,16 +59,18 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Binary
-        shell: cmd # استفاده از CMD برای پایداری بیشتر در فراخوانی vcvars64
+      - name: Final Build
+        shell: pwsh
         run: |
-          set CC=cl.exe
-          set CXX=cl.exe
-          set CMAKE_GENERATOR=Visual Studio 17 2022
+          # تنظیم متغیرهای نهایی برای کامپایلر
+          $env:CC = "cl.exe"
+          $env:CXX = "cl.exe"
+          $env:RUSTFLAGS = "-C linker=link.exe"
+          
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows
-          path: target/release/*.exe
+          name: slipstream-windows-binary
+          path: target/release/slipstream.exe
