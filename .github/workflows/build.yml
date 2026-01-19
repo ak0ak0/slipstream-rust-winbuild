@@ -9,9 +9,7 @@ jobs:
     env:
       OPENSSL_NO_VENDOR: 0
       PICOQUIC_AUTO_BUILD: 1
-      # آدرس دقیق برای حل ارور 193 در bindgen
       LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
-      CLANG_PATH: 'C:\Program Files\LLVM\bin\clang.exe'
 
     steps:
       - name: Checkout code
@@ -19,22 +17,29 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Fix Linker and Install Tools
+      - name: System Cleanup and Tools
         shell: powershell
         run: |
-          # ۱. حذف فیزیکی لینکر مزاحم گیت (حل قطعی مشکل لینک)
+          # ۱. حذف لینکر مزاحم گیت (حل مشکل linking failed)
           if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
-              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_old.exe" -Force
+              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
           }
           
-          # ۲. نصب ابزارهای بیلد
-          choco install nasm strawberryperl llvm -y
+          # ۲. نصب ابزارهای لازم
+          choco install nasm llvm -y
           
-          # ۳. اضافه کردن مسیرها به PATH (ترتیب بسیار مهم است)
+          # ۳. تنظیم اولویت‌های PATH (خیلی مهم)
+          # اولویت اول: Strawberry Perl (برای بیلد OpenSSL)
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          echo "C:\Strawberry\perl\site\bin" >> $env:GITHUB_PATH
+          echo "C:\Strawberry\c\bin" >> $env:GITHUB_PATH
+          
+          # اولویت‌های بعدی: ابزارهای بیلد
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          
+          # مسیر گیت (آخرین اولویت برای جلوگیری از تداخل Perl)
           echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
-          echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -50,18 +55,17 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        shell: pwsh
+        shell: powershell
         run: |
-          # تنظیم متغیرهای محیطی برای کامپایلر C مایکروسافت
+          # اجبار به استفاده از کامپایلر مایکروسافت
           $env:CC = "cl.exe"
           $env:CXX = "cl.exe"
-          # اجبار Rust به استفاده از شل گیت برای اسکریپت‌های احتمالی
-          $env:SHELL = "sh.exe"
           
+          # اجرای بیلد
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows
+          name: slipstream-windows-binary
           path: target/release/*.exe
