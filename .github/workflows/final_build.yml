@@ -9,19 +9,25 @@ jobs:
     env:
       OPENSSL_NO_VENDOR: 0
       PICOQUIC_AUTO_BUILD: 1
+      # این متغیر به ویندوز میگه که از ابزارهای بومی خودش استفاده کنه
+      CMAKE_GENERATOR: "Visual Studio 17 2022" 
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive # فوق‌العاده مهم: دانلود کدهای C داخلی
 
-      # نصب NASM که برای بخش‌های امنیتی picoquic حیاتی است
       - name: Install NASM
         uses: ilammy/setup-nasm@v1
 
-      # نصب Perl که برای بیلد کردن کتابخانه‌های C لازم است
       - name: Install Perl
         uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.36'
+
+      - name: Set up MSVC (Visual Studio Build Tools)
+        uses: ilammy/msvc-dev-cmd@v1 # محیط رو برای کامپایلر C ویندوز آماده می‌کنه
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -34,7 +40,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        # استفاده از ویژگی vendored برای OpenSSL
+        # اینجا ویژگی vendored رو برای openssl فعال کردیم
         run: cargo build --release --features openssl/vendored
 
       - name: Upload EXE
