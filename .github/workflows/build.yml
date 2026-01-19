@@ -1,4 +1,4 @@
-name: Build Windows Client (Final Attempt)
+name: Build Windows Client (VCPKG Method)
 
 on:
   workflow_dispatch:
@@ -6,10 +6,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      OPENSSL_NO_VENDOR: 0
-      PICOQUIC_AUTO_BUILD: 1
-      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+    variables:
+      VCPKG_POLICY_EMPTY_PACKAGE: 1
 
     steps:
       - name: Checkout code
@@ -18,37 +16,49 @@ jobs:
           submodules: recursive
 
       - name: Install System Tools
+        shell: powershell
         run: |
-          choco install nasm llvm strawberryperl protoc -y
-          # حذف فایل لینک مزاحم گیت برای جلوگیری از ارور قبلی
-          rm -f "C:/Program Files/Git/usr/bin/link.exe"
-        shell: bash # استفاده از بش برای حذف فایل
+          # ۱. حذف لینکر مزاحم گیت (حل ارور link.exe)
+          if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
+              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
+          }
+          
+          # ۲. نصب پیش‌نیازهای سنگین
+          choco install nasm llvm strawberryperl -y
+          
+          # ۳. اضافه کردن مسیرها به PATH
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1 # آماده‌سازی کامپایلر مایکروسافت
+      - name: Set up MSVC (Visual Studio Environment)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Binary
-        # نکته طلایی: اجرای کل بیلد در محیط بش برای حل ارور 193
-        shell: bash
+      - name: Build with Fixed Environment
+        shell: cmd
+        env:
+          OPENSSL_NO_VENDOR: 0
+          PICOQUIC_AUTO_BUILD: 1
+          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
         run: |
-          # اضافه کردن مسیرهای ضروری به ترتیب اولویت
-          export PATH="/c/Program Files/LLVM/bin:/c/NASM:/c/Strawberry/perl/bin:$PATH"
-          
-          # تنظیم متغیرهای محیطی برای کلنگ و اسمبلر
-          export CC=cl
-          export CXX=cl
-          export NASM=nasm
-          
-          # اجرای بیلد نهایی
+          # اجبار به استفاده از ابزارهای ویندوزی
+          set CC=cl.exe
+          set CXX=cl.exe
+          # اجرای بیلد با استفاده از قابلیت vendored برای پایداری
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: slipstream-windows
-          path: target/release/*.exe
+          path: target/release/slipstream.exe
