@@ -1,0 +1,30 @@
+name: Build Windows Client
+
+on:
+  workflow_dispatch: # فقط وقتی خودت دکمه رو بزنی بیلد می‌کنه
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Binary
+        run: cargo build --release
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v3
+        with:
+          name: slipstream-exe
+          path: target/release/*.exe
