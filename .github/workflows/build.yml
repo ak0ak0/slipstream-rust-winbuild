@@ -1,4 +1,4 @@
-name: Build Windows Client (Golden Fix)
+name: Build Windows Client (Fixed Linker)
 
 on:
   workflow_dispatch:
@@ -7,11 +7,10 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      # تنظیمات حیاتی برای اینکه OpenSSL و Picoquic قاطی نکنن
       OPENSSL_NO_VENDOR: 0
       PICOQUIC_AUTO_BUILD: 1
-      # مجبور کردن CMake به استفاده از ویژوال استودیو (جلوگیری از اجرای اسکریپت‌های شل)
-      CMAKE_GENERATOR: "Visual Studio 17 2022"
+      # تنظیم مسیر Clang برای جلوگیری از ارور Os 193
+      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
 
     steps:
       - name: Checkout code
@@ -19,13 +18,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Dependencies
+      - name: Nuke Conflicting Linker & Install Tools
+        shell: powershell
         run: |
+          # ۱. مهمترین مرحله: حذف link.exe متعلق به گیت که باعث ارور میشه
+          $badLinker = "C:\Program Files\Git\usr\bin\link.exe"
+          if (Test-Path $badLinker) {
+              Write-Host "Killing the imposter linker: $badLinker"
+              Remove-Item $badLinker -Force
+          }
+
+          # ۲. نصب ابزارهای ضروری
           choco install llvm nasm protoc -y
-          # اضافه کردن مسیر LLVM به PATH برای اینکه bindgen بتونه پیداش کنه
+
+          # ۳. اضافه کردن مسیر LLVM به PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC (Visual Studio)
+      - name: Set up MSVC (Official Microsoft Compiler)
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Rust
@@ -33,18 +42,17 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Binary
-        # استفاده از Bash برای اینکه اسکریپت‌های احتمالی لینوکسی اجرا بشن
-        shell: bash
+      - name: Build
+        shell: powershell
         run: |
-          # ست کردن متغیر محیطی برای پیدا کردن Clang (حل ارور 193)
-          export LIBCLANG_PATH="C:/Program Files/LLVM/bin"
+          # اطمینان از استفاده از کامپایلر مایکروسافت
+          $env:CC = "cl.exe"
+          $env:CXX = "cl.exe"
           
-          # ست کردن کامپایلر روی مایکروسافت
-          export CC=cl
-          export CXX=cl
+          # اگر پروژه نیاز به اجرای اسکریپت شل داشت، مسیرش رو میدیم (ولی لینک رو حذف کردیم)
+          $env:PATH = "C:\Program Files\Git\bin;" + $env:PATH
           
-          # بیلد با فلگ‌های امنیتی کمتر برای جلوگیری از کرش لینک
+          # بیلد نهایی
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
