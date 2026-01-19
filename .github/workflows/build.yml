@@ -1,4 +1,4 @@
-name: Build Windows Client (MSYS2 Method)
+name: Build Windows Client (Golden Fix)
 
 on:
   workflow_dispatch:
@@ -6,53 +6,49 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # تنظیمات حیاتی برای اینکه OpenSSL و Picoquic قاطی نکنن
+      OPENSSL_NO_VENDOR: 0
+      PICOQUIC_AUTO_BUILD: 1
+      # مجبور کردن CMake به استفاده از ویژوال استودیو (جلوگیری از اجرای اسکریپت‌های شل)
+      CMAKE_GENERATOR: "Visual Studio 17 2022"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            base-devel
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-perl
-            mingw-w64-x86_64-nasm
-            mingw-w64-x86_64-go
-            mingw-w64-x86_64-llvm
+      - name: Install Dependencies
+        run: |
+          choco install llvm nasm protoc -y
+          # اضافه کردن مسیر LLVM به PATH برای اینکه bindgen بتونه پیداش کنه
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up MSVC (Visual Studio)
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Final Build Attempt
-        shell: msys2 {0}
-        env:
-          OPENSSL_NO_VENDOR: 0
-          PICOQUIC_AUTO_BUILD: 1
-          LIBCLANG_PATH: /mingw64/bin
-          # این متغیرها به Rust می‌گویند از کامپایلر درست استفاده کند
-          CC: clang
-          CXX: clang++
-          AR: llvm-ar
+      - name: Build Binary
+        # استفاده از Bash برای اینکه اسکریپت‌های احتمالی لینوکسی اجرا بشن
+        shell: bash
         run: |
-          # اجبار به استفاده از لینکر مایکروسافت برای خروجی ویندوزی
-          export RUSTFLAGS="-C linker=link.exe"
-          # اجرای بیلد
+          # ست کردن متغیر محیطی برای پیدا کردن Clang (حل ارور 193)
+          export LIBCLANG_PATH="C:/Program Files/LLVM/bin"
+          
+          # ست کردن کامپایلر روی مایکروسافت
+          export CC=cl
+          export CXX=cl
+          
+          # بیلد با فلگ‌های امنیتی کمتر برای جلوگیری از کرش لینک
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: slipstream-windows
-          path: target/release/slipstream.exe
+          path: target/release/*.exe
