@@ -6,30 +6,43 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      OPENSSL_NO_VENDOR: 0
+      PICOQUIC_AUTO_BUILD: 1
+      # آدرس دقیق برای حل ارور 193 در bindgen
+      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+      CLANG_PATH: 'C:\Program Files\LLVM\bin\clang.exe'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Force Fix Environment
+      - name: Fix Linker and Install Tools
         shell: powershell
         run: |
-          # ۱. تغییر نام فایل link.exe مزاحم گیت (عامل اصلی ارور)
+          # ۱. حذف فیزیکی لینکر مزاحم گیت (حل قطعی مشکل لینک)
           if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
-              Write-Host "Renaming Git link.exe to avoid conflict..."
-              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
+              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_old.exe" -Force
           }
           
-          # ۲. نصب ابزارهای مورد نیاز
-          choco install nasm strawberryperl llvm protoc -y
+          # ۲. نصب ابزارهای بیلد
+          choco install nasm strawberryperl llvm -y
           
-          # ۳. تنظیم مسیرها در PATH
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          # ۳. اضافه کردن مسیرها به PATH (ترتیب بسیار مهم است)
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC (Visual Studio Tools)
+      - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,13 +51,13 @@ jobs:
 
       - name: Build Binary
         shell: pwsh
-        env:
-          OPENSSL_NO_VENDOR: 0
-          PICOQUIC_AUTO_BUILD: 1
-          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
         run: |
-          # اطمینان از اینکه لینکر مایکروسافت در اولویت است
-          $env:RUSTFLAGS = "-C linker=link.exe"
+          # تنظیم متغیرهای محیطی برای کامپایلر C مایکروسافت
+          $env:CC = "cl.exe"
+          $env:CXX = "cl.exe"
+          # اجبار Rust به استفاده از شل گیت برای اسکریپت‌های احتمالی
+          $env:SHELL = "sh.exe"
+          
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
