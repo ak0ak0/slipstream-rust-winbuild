@@ -6,32 +6,29 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      PICOQUIC_AUTO_BUILD: 1
-      OPENSSL_NO_VENDOR: 0
-      # حل ارور Os 193 با معرفی مسیر Clang و ابزارهای لازم
-      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: recursive
 
-      - name: Install Build Tools (NASM, Perl, LLVM)
+      - name: Force Fix Environment
+        shell: powershell
         run: |
-          choco install nasm strawberryperl llvm -y
-          # اضافه کردن مسیرهای حیاتی به PATH ویندوز
+          # ۱. تغییر نام فایل link.exe مزاحم گیت (عامل اصلی ارور)
+          if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
+              Write-Host "Renaming Git link.exe to avoid conflict..."
+              Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
+          }
+          
+          # ۲. نصب ابزارهای مورد نیاز
+          choco install nasm strawberryperl llvm protoc -y
+          
+          # ۳. تنظیم مسیرها در PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
-          echo "C:\Program Files\Git\usr\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
 
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up MSVC (Visual Studio)
+      - name: Set up MSVC (Visual Studio Tools)
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Rust
@@ -39,16 +36,19 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build Slipstream
-        # استفاده از دستور مستقیم برای بیلد بخش FFI و کل پروژه
+      - name: Build Binary
+        shell: pwsh
+        env:
+          OPENSSL_NO_VENDOR: 0
+          PICOQUIC_AUTO_BUILD: 1
+          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
         run: |
-          $env:PATH = "C:\Program Files\Git\bin;C:\Program Files\Git\usr\bin;" + $env:PATH
+          # اطمینان از اینکه لینکر مایکروسافت در اولویت است
+          $env:RUSTFLAGS = "-C linker=link.exe"
           cargo build --release --features openssl/vendored
 
-      - name: Upload Artifact
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows-binary
-          path: |
-             target/release/*.exe
-             !target/release/build-script-build.exe
+          name: slipstream-windows
+          path: target/release/*.exe
