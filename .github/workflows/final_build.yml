@@ -1,17 +1,19 @@
 name: Build Windows Client
 
 on:
-  workflow_dispatch: # اجرای دستی با دکمه
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      OPENSSL_NO_VENDOR: 0 # به Rust می‌گوید OpenSSL را خودش بسازد
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # آپدیت شد به v4
+        uses: actions/checkout@v4
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3 # آپدیت شد به v3
+        uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -21,10 +23,11 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        run: cargo build --release
+        # اضافه کردن ویژگی vendored برای حل مشکل OpenSSL
+        run: cargo build --release --features openssl/vendored
 
       - name: Upload EXE
-        uses: actions/upload-artifact@v4 # این همون بخشیه که ارور می‌داد، آپدیت شد به v4
+        uses: actions/upload-artifact@v4
         with:
           name: slipstream-exe
           path: target/release/*.exe
