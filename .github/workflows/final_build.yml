@@ -7,10 +7,21 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      OPENSSL_NO_VENDOR: 0 # به Rust می‌گوید OpenSSL را خودش بسازد
+      OPENSSL_NO_VENDOR: 0
+      PICOQUIC_AUTO_BUILD: 1
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # نصب NASM که برای بخش‌های امنیتی picoquic حیاتی است
+      - name: Install NASM
+        uses: ilammy/setup-nasm@v1
+
+      # نصب Perl که برای بیلد کردن کتابخانه‌های C لازم است
+      - name: Install Perl
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.36'
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -23,7 +34,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        # اضافه کردن ویژگی vendored برای حل مشکل OpenSSL
+        # استفاده از ویژگی vendored برای OpenSSL
         run: cargo build --release --features openssl/vendored
 
       - name: Upload EXE
