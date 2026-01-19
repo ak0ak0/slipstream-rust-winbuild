@@ -7,9 +7,12 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      OPENSSL_NO_VENDOR: 0
       PICOQUIC_AUTO_BUILD: 1
+      OPENSSL_NO_VENDOR: 0
+      # تنظیم مسیر Clang برای Bindgen
       LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+      # اجبار به استفاده از NASM برای بخش‌های کریپتو
+      NASM: 'C:\Program Files\NASM\nasm.exe'
 
     steps:
       - name: Checkout code
@@ -17,31 +20,25 @@ jobs:
         with:
           submodules: recursive
 
-      - name: System Cleanup and Tools
+      - name: Install System Tools
         shell: powershell
         run: |
-          # ۱. حذف لینکر مزاحم گیت (حل مشکل linking failed)
+          # ۱. حذف لینکر مزاحم گیت (حل قطعی مشکل link.exe)
           if (Test-Path "C:\Program Files\Git\usr\bin\link.exe") {
               Move-Item "C:\Program Files\Git\usr\bin\link.exe" "C:\Program Files\Git\usr\bin\link_bad.exe" -Force
           }
           
-          # ۲. نصب ابزارهای لازم
-          choco install nasm llvm -y
+          # ۲. نصب ابزارهای مورد نیاز
+          choco install nasm llvm strawberryperl -y
           
-          # ۳. تنظیم اولویت‌های PATH (خیلی مهم)
-          # اولویت اول: Strawberry Perl (برای بیلد OpenSSL)
-          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
-          echo "C:\Strawberry\perl\site\bin" >> $env:GITHUB_PATH
-          echo "C:\Strawberry\c\bin" >> $env:GITHUB_PATH
-          
-          # اولویت‌های بعدی: ابزارهای بیلد
+          # ۳. اضافه کردن مسیرها به PATH با اولویت بالا
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-          
-          # مسیر گیت (آخرین اولویت برای جلوگیری از تداخل Perl)
+          echo "C:\Strawberry\perl\bin" >> $env:GITHUB_PATH
+          # اضافه کردن مسیر شل گیت برای اجرای اسکریپت‌های احتمالی
           echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
 
-      - name: Set up MSVC
+      - name: Set up MSVC (Visual Studio Environment)
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Protoc
@@ -55,17 +52,15 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Build Binary
-        shell: powershell
+        shell: cmd # استفاده از CMD برای پایداری بیشتر در فراخوانی vcvars64
         run: |
-          # اجبار به استفاده از کامپایلر مایکروسافت
-          $env:CC = "cl.exe"
-          $env:CXX = "cl.exe"
-          
-          # اجرای بیلد
+          set CC=cl.exe
+          set CXX=cl.exe
+          set CMAKE_GENERATOR=Visual Studio 17 2022
           cargo build --release --features openssl/vendored
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows-binary
+          name: slipstream-windows
           path: target/release/*.exe
