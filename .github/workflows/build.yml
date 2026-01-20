@@ -1,42 +1,45 @@
-name: Cross-Build Windows EXE
+name: Cross-Build Windows (Final Fix)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    # اینجا کلک اصلی رو می‌زنیم: روی لینوکس اجرا می‌کنیم که ارور ۱۹۳ نده
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Cross-Compilation Tools
+      - name: Install MinGW & Tools
         run: |
           sudo apt-get update
-          # نصب کامپایلر MinGW برای ساخت فایل exe در لینوکس
-          sudo apt-get install -y mingw-w64 nasm llvm clang build-essential
+          sudo apt-get install -y mingw-w64 nasm llvm clang build-essential cmake
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # تارگت ویندوز رو نصب می‌کنیم
           targets: x86_64-pc-windows-gnu
 
-      - name: Build for Windows
+      - name: Build Windows EXE
         env:
-          # تنظیم محیط برای کامپایل کدهای C (مثل picoquic) برای ویندوز
+          # تنظیم دقیق کامپایلرها برای اینکه سراغ لینوکس نرن
           CC: x86_64-w64-mingw32-gcc
           CXX: x86_64-w64-mingw32-g++
           AR: x86_64-w64-mingw32-ar
-          # حل مشکل OpenSSL
-          OPENSSL_DIR: /usr/lib/ssl
-          PKG_CONFIG_ALLOW_CROSS: 1
+          
+          # این دو خط حیاتیه: به CMake میگه "کور شو و لینوکس رو نبین"
+          OPENSSL_NO_PKG_CONFIG: 1
+          OPENSSL_STATIC: 1
+          
+          # تنظیمات برای اینکه CMake فقط کامپایلر ویندوز رو ببینه
+          CMAKE_C_COMPILER: x86_64-w64-mingw32-gcc
+          CMAKE_CXX_COMPILER: x86_64-w64-mingw32-g++
+          CMAKE_SYSTEM_NAME: Windows
+          
         run: |
-          # بیلد کردن برای ویندوز (gnu abi پایدارتره برای این مدل پروژه‌ها)
+          # بیلد نهایی با حذف وابستگی‌های سیستمی
           cargo build --release --target x86_64-pc-windows-gnu --features openssl/vendored
 
       - name: Rename Output
@@ -46,5 +49,5 @@ jobs:
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows-64bit
+          name: slipstream-windows-final
           path: slipstream.exe
