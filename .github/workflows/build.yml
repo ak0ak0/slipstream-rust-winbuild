@@ -1,16 +1,12 @@
-name: Build Windows Client (Fixed Linker)
+name: Cross-Build Windows EXE
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
-    env:
-      OPENSSL_NO_VENDOR: 0
-      PICOQUIC_AUTO_BUILD: 1
-      # تنظیم مسیر Clang برای جلوگیری از ارور Os 193
-      LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+    # اینجا کلک اصلی رو می‌زنیم: روی لینوکس اجرا می‌کنیم که ارور ۱۹۳ نده
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -18,45 +14,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Nuke Conflicting Linker & Install Tools
-        shell: powershell
+      - name: Install Cross-Compilation Tools
         run: |
-          # ۱. مهمترین مرحله: حذف link.exe متعلق به گیت که باعث ارور میشه
-          $badLinker = "C:\Program Files\Git\usr\bin\link.exe"
-          if (Test-Path $badLinker) {
-              Write-Host "Killing the imposter linker: $badLinker"
-              Remove-Item $badLinker -Force
-          }
-
-          # ۲. نصب ابزارهای ضروری
-          choco install llvm nasm protoc -y
-
-          # ۳. اضافه کردن مسیر LLVM به PATH
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
-
-      - name: Set up MSVC (Official Microsoft Compiler)
-        uses: ilammy/msvc-dev-cmd@v1
+          sudo apt-get update
+          # نصب کامپایلر MinGW برای ساخت فایل exe در لینوکس
+          sudo apt-get install -y mingw-w64 nasm llvm clang build-essential
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          # تارگت ویندوز رو نصب می‌کنیم
+          targets: x86_64-pc-windows-gnu
 
-      - name: Build
-        shell: powershell
+      - name: Build for Windows
+        env:
+          # تنظیم محیط برای کامپایل کدهای C (مثل picoquic) برای ویندوز
+          CC: x86_64-w64-mingw32-gcc
+          CXX: x86_64-w64-mingw32-g++
+          AR: x86_64-w64-mingw32-ar
+          # حل مشکل OpenSSL
+          OPENSSL_DIR: /usr/lib/ssl
+          PKG_CONFIG_ALLOW_CROSS: 1
         run: |
-          # اطمینان از استفاده از کامپایلر مایکروسافت
-          $env:CC = "cl.exe"
-          $env:CXX = "cl.exe"
-          
-          # اگر پروژه نیاز به اجرای اسکریپت شل داشت، مسیرش رو میدیم (ولی لینک رو حذف کردیم)
-          $env:PATH = "C:\Program Files\Git\bin;" + $env:PATH
-          
-          # بیلد نهایی
-          cargo build --release --features openssl/vendored
+          # بیلد کردن برای ویندوز (gnu abi پایدارتره برای این مدل پروژه‌ها)
+          cargo build --release --target x86_64-pc-windows-gnu --features openssl/vendored
+
+      - name: Rename Output
+        run: |
+          mv target/x86_64-pc-windows-gnu/release/slipstream.exe ./slipstream.exe
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
-          name: slipstream-windows
-          path: target/release/*.exe
+          name: slipstream-windows-64bit
+          path: slipstream.exe
